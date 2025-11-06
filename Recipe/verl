@@ -1,0 +1,196 @@
+# VERL 仓库结构总结
+
+## 一、项目概览
+
+**verl (Volcano Engine Reinforcement Learning for LLMs)** 是一个由字节跳动 Seed 团队发起的大语言模型强化学习训练库，是 HybridFlow 论文的开源实现。
+
+### 核心特点
+- **灵活的编程模型**：混合控制器编程模型，可轻松构建 PPO、GRPO 等 RL 数据流
+- **模块化设计**：解耦计算和数据依赖，与现有 LLM 框架（FSDP、Megatron-LM、vLLM、SGLang）无缝集成
+- **高性能**：SOTA 级别的训练和推理吞吐量
+- **灵活设备映射**：支持将模型灵活部署到不同 GPU 集合
+
+## 二、目录结构详解
+
+### 1. **核心代码目录 `verl/`**
+
+```
+verl/
+├── trainer/              # 训练入口和主流程
+│   ├── main_ppo.py      # PPO训练主入口
+│   ├── main_eval.py     # 评估入口
+│   ├── ppo/             # PPO算法核心实现
+│   │   ├── ray_trainer.py      # Ray分布式训练器
+│   │   ├── core_algos.py       # PPO核心算法
+│   │   ├── reward.py           # 奖励管理
+│   │   └── utils.py
+│   └── config/          # Hydra配置文件
+│
+├── workers/             # 分布式工作节点实现
+│   ├── actor/          # Actor模型相关
+│   ├── critic/         # Critic模型相关
+│   ├── rollout/        # Rollout生成
+│   │   ├── vllm_rollout/      # vLLM推理引擎集成
+│   │   ├── sglang_rollout/    # SGLang推理引擎集成
+│   │   └── hf_rollout.py      # HuggingFace推理
+│   ├── reward_model/   # 奖励模型
+│   ├── fsdp_workers.py # FSDP后端worker
+│   └── megatron_workers.py  # Megatron-LM后端worker
+│
+├── models/             # 模型定义
+│   ├── llama/         # Llama模型实现
+│   ├── qwen2/         # Qwen2模型实现
+│   ├── mcore/         # Megatron-Core集成
+│   ├── transformers/  # Transformers封装
+│   └── registry.py    # 模型注册表
+│
+├── utils/             # 工具函数
+│   ├── checkpoint/    # 检查点管理
+│   ├── dataset/       # 数据集工具
+│   ├── distributed.py # 分布式工具
+│   ├── fsdp_utils.py  # FSDP相关工具
+│   ├── megatron_utils.py  # Megatron工具
+│   └── vllm/         # vLLM集成工具
+│
+├── single_controller/  # 单控制器实现
+│   ├── base/          # 基础控制器
+│   └── ray/           # Ray控制器
+│
+├── protocol.py        # 数据传输协议（DataProto）
+├── base_config.py     # 基础配置
+└── interactions/      # 交互数据结构
+```
+
+### 2. **示例代码 `examples/`**
+
+包含各种RL算法的完整训练示例：
+- `ppo_trainer/` - PPO训练示例
+- `grpo_trainer/` - GRPO (Group Relative Policy Optimization)
+- `remax_trainer/` - ReMax算法
+- `rloo_trainer/` - RLOO算法
+- `sft/` - 监督微调示例
+- `sglang_multiturn/` - 多轮对话支持
+- `split_placement/` - 分离资源部署示例
+
+### 3. **算法配方 `recipe/`**
+
+包含高级RL算法和特定任务的端到端训练配方：
+- `dapo/` - DAPO算法（在AIME 2024上达到50分）
+- `prime/` - PRIME算法
+- `sppo/` - Self-play Preference Optimization
+- `gspo/` - GSPO算法
+- `r1/` - R1相关实现
+- `entropy/` - 熵机制相关
+- `retool/` - ReTool工具使用强化学习
+
+### 4. **脚本目录 `scripts/`**
+
+- `converter_hf_to_mcore.py` - HuggingFace到Megatron-Core转换
+- `diagnose.py` - 诊断工具
+- `rollout_viewer.py` - Rollout可视化
+
+### 5. **文档 `docs/`**
+
+- `start/` - 快速开始指南
+- `algo/` - 算法文档
+- `examples/` - 示例说明
+- `workers/` - Worker组件文档
+- `advance/` - 高级用法
+- `perf/` - 性能调优指南
+
+## 三、核心架构组件
+
+### 1. **DataProto（数据协议）**
+位于 `verl/protocol.py`，是 verl 的核心数据结构：
+- `batch`: TensorDict，存储张量数据
+- `non_tensor_batch`: dict，存储非张量数据（如字符串）
+- `meta_info`: dict，存储元信息
+- 支持分布式传输、序列化、切片、合并等操作
+
+### 2. **训练流程**
+主入口 `verl/trainer/main_ppo.py`：
+1. 使用 Hydra 进行配置管理
+2. 初始化 Ray 集群
+3. 创建分布式 Worker（Actor、Critic、Rollout、RewardModel）
+4. 执行 PPO 训练循环
+
+### 3. **Worker 系统**
+- **Actor Worker**: 训练策略网络
+- **Critic Worker**: 训练价值网络
+- **Rollout Worker**: 使用推理引擎生成回复
+- **RewardModel Worker**: 计算奖励信号
+
+### 4. **后端支持**
+- **训练后端**: FSDP、FSDP2、Megatron-LM
+- **推理后端**: vLLM、SGLang、HuggingFace Transformers
+
+## 四、关键特性
+
+### 1. **支持的算法**
+- PPO, GRPO, GSPO, ReMax, REINFORCE++, RLOO
+- PRIME, DAPO, DrGRPO, KL_Cov & Clip_Cov
+- SPPO, PF-PPO, VAPO
+
+### 2. **支持的模型**
+- Qwen-3, Qwen-2.5, Llama3.1, Gemma2, DeepSeek-LLM
+- 支持大规模 MoE 模型（如 DeepSeek-671B、Qwen3-235B）
+- 支持视觉语言模型（VLM）
+
+### 3. **高级功能**
+- Flash Attention 2
+- Sequence Packing
+- Sequence Parallelism
+- LoRA 支持
+- 多轮对话和工具调用
+- Expert Parallelism（专家并行）
+
+## 五、配置系统
+
+使用 **Hydra** 进行配置管理，主配置文件位于 `verl/trainer/config/`：
+- 支持命令行覆盖参数
+- 模块化配置组（actor, critic, rollout, reward_model等）
+- 示例：`quick_start.sh` 展示了完整的配置示例
+
+## 六、数据流程
+
+典型的 PPO 训练流程：
+1. **数据加载** → 从 parquet 文件加载训练数据
+2. **Rollout** → 使用当前策略生成响应
+3. **奖励计算** → 计算奖励信号（可使用奖励模型或验证函数）
+4. **优势计算** → 使用 Critic 计算优势函数
+5. **策略更新** → 使用 PPO 算法更新 Actor
+6. **价值更新** → 更新 Critic 网络
+
+## 七、实验管理
+
+支持多种实验跟踪工具：
+- WandB
+- MLflow
+- TensorBoard
+- SwanLab
+
+## 八、推荐的学习路径
+
+1. **入门**: 运行 `quick_start.sh` 了解基本流程
+2. **理解架构**: 阅读 `verl/protocol.py` 和 `verl/trainer/main_ppo.py`
+3. **深入算法**: 查看 `verl/trainer/ppo/core_algos.py`
+4. **扩展**: 参考 `examples/` 和 `recipe/` 中的示例
+
+## 九、关键依赖
+
+```
+核心依赖：
+- Ray >= 2.41.0 (分布式框架)
+- PyTorch (深度学习)
+- Transformers (模型库)
+- TensorDict (数据结构)
+- Hydra (配置管理)
+
+可选依赖：
+- vLLM >= 0.8.5 (推理加速)
+- sglang == 0.5.2 (推理引擎)
+- flash-attn (注意力加速)
+- liger-kernel (优化内核)
+```
+
+---
